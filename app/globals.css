@@ -1,26 +1,43 @@
-@import "tailwindcss";
+/* app/globals.css */
+/* Tailwind base (already enabled by create-next-app with --tailwind) */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
 
+/* -------- Green Dome theme tokens -------- */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --emerald: #0e5f3b;
+  --olive:   #3f6e4b;
+  --cream:   #f7f3e8;
+  --gold:    #c4a356;
+  --ink:     #0f172a;
+  --muted:   #687076;
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+/* Map tokens to utility classes via Tailwind CSS variables */
+@layer utilities {
+  .text-emerald { color: var(--emerald); }
+  .text-gold    { color: var(--gold); }
+  .text-ink     { color: var(--ink); }
+  .text-muted   { color: var(--muted); }
+
+  .bg-cream     { background-color: var(--cream); }
+  .bg-emerald   { background-color: var(--emerald); }
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+/* Reusable components */
+@layer components {
+  .btn-primary {
+    @apply inline-flex items-center justify-center rounded-full px-4 py-2 text-sm font-medium;
+    background: var(--emerald);
+    color: var(--cream);
   }
-}
+  .btn-primary:hover { filter: brightness(1.05); }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  .btn-secondary {
+    @apply inline-flex items-center justify-center rounded-full px-4 py-2 text-sm font-medium border border-emerald/40;
+    color: var(--emerald);
+    background: white;
+  }
+  .btn-secondary:hover { background: #f9fafb; }
 }
