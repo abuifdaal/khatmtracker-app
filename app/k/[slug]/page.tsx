@@ -1,28 +1,79 @@
 // app/k/[slug]/page.tsx
-// Server component that fetches the khatam row and progress,
-// then renders a simple page.
+"use client";
 
-import { createClient } from "@supabase/supabase-js";
-
-async function getSupabaseAnon() {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-  const anon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
-  return createClient(url, anon, { auth: { persistSession: false } });
-}
+import { useEffect, useState } from "react";
 
 type Params = { slug: string };
 
-export default async function KhatamPage({ params }: { params: Params }) {
-  const supabase = await getSupabaseAnon();
+export default function KhatamPage({ params }: { params: Promise<Params> }) {
+  const [slug, setSlug] = useState<string>("");
+  const [khatam, setKhatam] = useState<any>(null);
+  const [progress, setProgress] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
 
-  // 1) Load khatam by slug
-  const { data: khatam, error: kErr } = await supabase
-    .from("khatams")
-    .select("*")
-    .eq("slug", params.slug)
-    .single();
+  // Pledge form state
+  const [displayName, setDisplayName] = useState("");
+  const [message, setMessage] = useState("");
+  const [email, setEmail] = useState("");
+  const [units, setUnits] = useState<number>(1);
+  const [juz, setJuz] = useState<number>(1);
+  const [result, setResult] = useState<{ ok: boolean; manage?: string; error?: string } | null>(null);
 
-  if (kErr || !khatam) {
+  useEffect(() => {
+    (async () => {
+      const { slug } = await params;
+      setSlug(slug);
+    })();
+  }, [params]);
+
+  useEffect(() => {
+    if (!slug) return;
+    (async () => {
+      setLoading(true);
+      try {
+        // 1) Load khatam row
+        const res1 = await fetch(`/api/khatam/get?slug=${encodeURIComponent(slug)}`);
+        const j1 = await res1.json();
+
+        // 2) Progress (no PII)
+        const res2 = await fetch(`/api/progress/${encodeURIComponent(slug)}`);
+        const j2 = await res2.json();
+
+        setKhatam(j1.data || null);
+        setProgress(j2.data || null);
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, [slug]);
+
+  async function submitPledge(e: React.FormEvent) {
+    e.preventDefault();
+    setResult(null);
+    const body: any = {
+      slug,
+      display_name: displayName || undefined,
+      message: message || undefined,
+      email: email || undefined, // stays private
+    };
+    if (khatam?.type === "custom_counter") {
+      body.units_pledged = units;
+    } else {
+      body.juz_number = juz;
+    }
+    const res = await fetch("/api/pledge/create", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    const json = await res.json();
+    setResult(json);
+  }
+
+  if (loading) {
+    return <div className="rounded-xl border border-black/5 bg-white p-6">Loading…</div>;
+  }
+  if (!khatam) {
     return (
       <div className="rounded-xl border border-black/5 bg-white p-6">
         <h1 className="text-xl font-semibold mb-2">Khatam not found</h1>
@@ -31,17 +82,9 @@ export default async function KhatamPage({ params }: { params: Params }) {
     );
   }
 
-  // 2) Get progress via our RPC (no PII)
-  const { data: progress } = await supabase.rpc("khatam_progress_by_slug", { slug_in: params.slug });
-
-  const deadline = new Date(khatam.read_by_at).toLocaleString(undefined, {
-    dateStyle: "medium",
-    timeStyle: "short",
-  });
-
-  // Simple progress numbers
-  let label = "";
+  // Render progress labels
   let pct = 0;
+  let label = "";
   if (progress?.type === "quran") {
     const total = progress.total ?? 30;
     const pledged = progress.pledged ?? 0;
@@ -56,6 +99,11 @@ export default async function KhatamPage({ params }: { params: Params }) {
     label = `${pledged}/${target} units pledged • ${completed}/${target} units completed`;
   }
 
+  const deadline = new Date(khatam.read_by_at).toLocaleString(undefined, {
+    dateStyle: "medium",
+    timeStyle: "short",
+  });
+
   return (
     <div className="grid gap-6">
       <section className="rounded-xl border border-black/5 bg-white p-6">
@@ -67,18 +115,65 @@ export default async function KhatamPage({ params }: { params: Params }) {
         {/* Progress */}
         <div className="mb-3">
           <div className="h-3 w-full rounded-full bg-[rgba(0,0,0,0.08)] overflow-hidden">
-            <div
-              className="h-full"
-              style={{ width: `${pct}%`, background: "linear-gradient(90deg, var(--gold), var(--emerald))" }}
-            />
+            <div className="h-full" style={{ width: `${pct}%`, background: "linear-gradient(90deg, var(--gold), var(--emerald))" }} />
           </div>
           <div className="mt-2 text-sm text-muted">{label}</div>
         </div>
+      </section>
 
-        <div className="flex gap-3">
-          <a className="btn-primary" href="#">Pledge (coming next)</a>
-          <a className="btn-secondary" href="#">Get QR (coming next)</a>
-        </div>
+      {/* Pledge form */}
+      <section className="rounded-xl border border-black/5 bg-white p-6">
+        <h2 className="text-lg font-semibold mb-3">Pledge</h2>
+        <form className="grid gap-3 max-w-xl" onSubmit={submitPledge}>
+          <label className="grid gap-1">
+            <span className="text-sm font-medium">Name (optional)</span>
+            <input className="border rounded px-3 py-2" value={displayName} onChange={(e) => setDisplayName(e.target.value)} />
+          </label>
+
+          <label className="grid gap-1">
+            <span className="text-sm font-medium">Message to the creator (optional, max 250)</span>
+            <input className="border rounded px-3 py-2" value={message} maxLength={250} onChange={(e) => setMessage(e.target.value)} />
+          </label>
+
+          <label className="grid gap-1">
+            <span className="text-sm font-medium">Email (optional, private)</span>
+            <input type="email" className="border rounded px-3 py-2" value={email} onChange={(e) => setEmail(e.target.value)} />
+          </label>
+
+          {khatam.type === "custom_counter" ? (
+            <label className="grid gap-1">
+              <span className="text-sm font-medium">{khatam.unit_label} — units you’ll read</span>
+              <input type="number" min={1} className="border rounded px-3 py-2" value={units} onChange={(e) => setUnits(Number(e.target.value))} />
+            </label>
+          ) : (
+            <label className="grid gap-1">
+              <span className="text-sm font-medium">Select Juz’ (1–30)</span>
+              <input type="number" min={1} max={30} className="border rounded px-3 py-2" value={juz} onChange={(e) => setJuz(Number(e.target.value))} />
+              <span className="text-xs text-muted">We’ll show taken/available per Juz in a nicer UI later.</span>
+            </label>
+          )}
+
+          <button className="btn-primary">Make Pledge</button>
+        </form>
+
+        {result && (
+          <div className={`mt-3 rounded border p-3 ${result.ok ? "border-emerald" : "border-red-400"}`}>
+            {result.ok ? (
+              <div>
+                <div className="mb-2">✅ Pledge created!</div>
+                <div className="text-sm">
+                  Your private manage link (keep this safe):{" "}
+                  <a className="text-emerald underline" href={`/p/${result.manage}`}>/p/{result.manage}</a>
+                </div>
+                <div className="text-xs text-muted mt-1">
+                  We’ll email this link to you in the next step if you enter an email.
+                </div>
+              </div>
+            ) : (
+              <div>❌ {result.error}</div>
+            )}
+          </div>
+        )}
       </section>
 
       {khatam.dedication_text && (
