@@ -1,10 +1,8 @@
 // app/create/page.tsx
 "use client";
 
-// This is a client component because we need form state & onSubmit.
-// It posts to /api/khatam/create and then shows a success link.
-
 import { useState, useEffect } from "react";
+import Turnstile from "@/components/Turnstile";
 
 type KhatamType = "quran" | "custom_counter";
 
@@ -14,12 +12,12 @@ export default function CreateKhatamPage() {
   const [dedication, setDedication] = useState("");
   const [unitLabel, setUnitLabel] = useState("Surah Yasin");
   const [targetUnits, setTargetUnits] = useState<number>(40);
-  const [readByLocal, setReadByLocal] = useState(""); // HTML datetime-local (no timezone)
+  const [readByLocal, setReadByLocal] = useState("");
   const [tz, setTz] = useState("Europe/London");
+  const [captchaToken, setCaptchaToken] = useState<string>("");
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<{ ok: boolean; slug?: string; error?: string } | null>(null);
 
-  // Auto-detect the browser timezone (you can edit in the input)
   useEffect(() => {
     try {
       const autodetect = Intl.DateTimeFormat().resolvedOptions().timeZone;
@@ -27,19 +25,24 @@ export default function CreateKhatamPage() {
     } catch {}
   }, []);
 
-  // Helper: convert the user's datetime-local to UTC ISO string
   function localToUTCISOString(local: string): string | null {
     if (!local) return null;
-    // local is like "2025-09-01T21:00"
     const d = new Date(local);
     if (isNaN(d.getTime())) return null;
-    return d.toISOString(); // converts from your current machine's timezone to UTC ISO
+    return d.toISOString();
   }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setLoading(true);
     setResult(null);
+
+    // CAPTCHA check
+    if (!captchaToken) {
+      setResult({ ok: false, error: "Please complete the CAPTCHA." });
+      setLoading(false);
+      return;
+    }
 
     const readByISO = localToUTCISOString(readByLocal);
     if (!readByISO) {
@@ -48,13 +51,13 @@ export default function CreateKhatamPage() {
       return;
     }
 
-    // Basic payload
     const base: any = {
       type,
       title,
       dedication_text: dedication || undefined,
       readByISO,
       tz,
+      captchaToken, // send token
     };
 
     if (type === "custom_counter") {
@@ -88,23 +91,11 @@ export default function CreateKhatamPage() {
         {/* Type toggle */}
         <div className="flex gap-4">
           <label className="flex items-center gap-2">
-            <input
-              type="radio"
-              name="type"
-              value="custom_counter"
-              checked={type === "custom_counter"}
-              onChange={() => setType("custom_counter")}
-            />
+            <input type="radio" name="type" value="custom_counter" checked={type === "custom_counter"} onChange={() => setType("custom_counter")} />
             <span>Custom Counter</span>
           </label>
           <label className="flex items-center gap-2">
-            <input
-              type="radio"
-              name="type"
-              value="quran"
-              checked={type === "quran"}
-              onChange={() => setType("quran")}
-            />
+            <input type="radio" name="type" value="quran" checked={type === "quran"} onChange={() => setType("quran")} />
             <span>Qur’an (30 Juz’)</span>
           </label>
         </div>
@@ -112,26 +103,13 @@ export default function CreateKhatamPage() {
         {/* Title */}
         <label className="grid gap-1">
           <span className="text-sm font-medium">Title</span>
-          <input
-            className="border rounded px-3 py-2"
-            placeholder='e.g. "Shawwal Khatam"'
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-            required
-            minLength={3}
-          />
+          <input className="border rounded px-3 py-2" placeholder='e.g. "Shawwal Khatam"' value={title} onChange={(e) => setTitle(e.target.value)} required minLength={3} />
         </label>
 
         {/* Dedication */}
         <label className="grid gap-1">
           <span className="text-sm font-medium">Dedication (optional)</span>
-          <textarea
-            className="border rounded px-3 py-2"
-            placeholder="Whom is this for? Intention/message."
-            value={dedication}
-            onChange={(e) => setDedication(e.target.value)}
-            rows={3}
-          />
+          <textarea className="border rounded px-3 py-2" placeholder="Whom is this for? Intention/message." value={dedication} onChange={(e) => setDedication(e.target.value)} rows={3} />
         </label>
 
         {type === "custom_counter" && (
@@ -139,30 +117,14 @@ export default function CreateKhatamPage() {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <label className="grid gap-1">
                 <span className="text-sm font-medium">Unit label</span>
-                <input
-                  className="border rounded px-3 py-2"
-                  placeholder='e.g. "Surah Yasin" or "Salawat (x1000)"'
-                  value={unitLabel}
-                  onChange={(e) => setUnitLabel(e.target.value)}
-                  required={type === "custom_counter"}
-                />
+                <input className="border rounded px-3 py-2" placeholder='e.g. "Surah Yasin" or "Salawat (x1000)"' value={unitLabel} onChange={(e) => setUnitLabel(e.target.value)} required />
               </label>
               <label className="grid gap-1">
                 <span className="text-sm font-medium">Target units</span>
-                <input
-                  type="number"
-                  className="border rounded px-3 py-2"
-                  placeholder="e.g. 40"
-                  value={targetUnits}
-                  onChange={(e) => setTargetUnits(Number(e.target.value))}
-                  min={1}
-                  required={type === "custom_counter"}
-                />
+                <input type="number" className="border rounded px-3 py-2" placeholder="e.g. 40" value={targetUnits} onChange={(e) => setTargetUnits(Number(e.target.value))} min={1} required />
               </label>
             </div>
-            <p className="text-xs text-muted">
-              In counter mode, people can pledge any number of “units”. Over-pledging is allowed until the deadline.
-            </p>
+            <p className="text-xs text-muted">In counter mode, people can pledge any number of “units”. Over-pledging is allowed until the deadline.</p>
           </>
         )}
 
@@ -170,25 +132,19 @@ export default function CreateKhatamPage() {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <label className="grid gap-1">
             <span className="text-sm font-medium">Read by (your local time)</span>
-            <input
-              type="datetime-local"
-              className="border rounded px-3 py-2"
-              value={readByLocal}
-              onChange={(e) => setReadByLocal(e.target.value)}
-              required
-            />
+            <input type="datetime-local" className="border rounded px-3 py-2" value={readByLocal} onChange={(e) => setReadByLocal(e.target.value)} required />
           </label>
 
           <label className="grid gap-1">
             <span className="text-sm font-medium">Your timezone</span>
-            <input
-              className="border rounded px-3 py-2"
-              value={tz}
-              onChange={(e) => setTz(e.target.value)}
-              required
-            />
+            <input className="border rounded px-3 py-2" value={tz} onChange={(e) => setTz(e.target.value)} required />
           </label>
         </div>
+
+        {/* CAPTCHA widget (only one instance, key forces remount) */}
+        {typeof window !== "undefined" && (
+          <Turnstile key="create-turnstile" onVerify={(token) => setCaptchaToken(token)} />
+        )}
 
         <button className="btn-primary" disabled={loading}>
           {loading ? "Creating..." : "Create Khatam"}
@@ -206,11 +162,6 @@ export default function CreateKhatamPage() {
             )}
           </div>
         )}
-
-        <p className="text-xs text-muted">
-          Note: We convert your selected time to UTC using your current device’s timezone. Keep the “Your timezone”
-          field matching your actual timezone for correct display/enforcement.
-        </p>
       </form>
     </div>
   );
